@@ -4,7 +4,8 @@
 Este proyecto utiliza **[Playwright](https://playwright.dev/python/)** para automatizar la navegación en páginas web con el objetivo de extraer información útil de manera estructurada. Está dividido en dos partes complementarias:
 
 - **Parte 1 – Scraper Retail (sincrónico)**: Automatiza la extracción de productos desde tiendas online como **MercadoLibre** y **Éxito**.
-- **Parte 2 – Scraper Wiki (asincrónico)**: Extrae información estructurada desde artículos de una Wiki.
+- **Parte 2 – Scraper News (asincrónico)**: Extrae información estructurada desde paginas de noticias.
+- **Parte 3 – Scraper Wiki (sincrónico)**: Extrae información estructurada desde artículos de una Wiki.
 
 Esto permite comparar dos enfoques distintos de programación (sincrónico y asincrónico), ambos usando Playwright con Python.
 
@@ -282,4 +283,139 @@ if pagina_actual < paginas and not self._ir_a_siguiente_pagina(page):
         if sitio in self.scrapers:
             return self.scrapers[sitio].scrape(producto, paginas) # Delega el trabajo al scraper específico
 ```
-# Asi finalmente culmina la magia del scraper
+## Parte 2 - Scraper de Noticias (NewScraper)
+
+### Bibliotecas utilizadas
+
+```python
+import asyncio
+from playwright.async_api import async_playwright
+from herramientas import process_text
+```
+```mermaid
+flowchart LR
+    A[asyncio] -->|Gestiona| B[Concurrencia de tareas]
+    C[playwright.async_api] -->|Controla| D[Navegador en modo headless/headful]
+    E[herramientas] -->|Procesa| F[Extracción de texto y resúmenes]
+```
+## Clase `NewScraper`
+
+### 1. Configuración Inicial
+```python
+  class NewScraper:
+    TIMEOUT = 30000  # 30 segundos
+    MAX_RESULTS = 3  # Máximo de noticias por sitio
+    HEADLESS = False  # Modo visible
+```
+- Define constantes clave para el scraper de noticias:
+  - `TIMEOUT`: Tiempo máximo de espera para cargar una página (30 s).
+  - `MAX_RESULTS`: Límite de noticias extraídas por sitio.
+  - `HEADLESS`: Indica si el navegador se ejecuta en modo oculto (`True`) o visible (`False`).
+
+### 2. Funcionalidad Principal
+#### scrappers especificos por sitio:
+```python
+  async def eltiempo_scraper(self, page, keyword):
+    # Configuración única para El Tiempo
+    search_url = f"https://www.eltiempo.com/buscar?q={self.normalize_keyword(keyword, 'eltiempo')}"
+    await page.goto(search_url, timeout=self.TIMEOUT)
+    items = await page.locator("h3.c-article__title a").all()
+```
+- Realiza una búsqueda en el sitio web de El Tiempo con la palabra clave dada.
+- Construye la URL de búsqueda reemplazando espacios por `+`.
+- Navega a la página de resultados y localiza los enlaces de titulares (`<h3>` con clase `c-article__title`).
+
+#### Flujo de extracción:
+```python
+  async def scrape_eltiempo_article(self, page):
+    title = await page.locator("h1").first.inner_text()
+    paragraphs = await page.locator("div.paragraph").all_text_contents()
+    full_text = "\n\n".join(paragraphs)
+    process_text(page.url, "Noticia", full_text)
+```
+- Extrae el título principal del artículo desde la etiqueta `<h1>`.
+- Obtiene todo el contenido del cuerpo usando los párrafos dentro de `div.paragraph`.
+- Une los párrafos en un solo texto y lo envía a `process_text` junto con la URL y la etiqueta "Noticia".
+
+### 3. Metodos Clave
+```python
+  async def scraper(self, keyword):
+    async with async_playwright() as p:
+        browser = await p.chromium.launch(headless=self.HEADLESS)
+        page = await browser.new_page()
+        await self.eltiempo_scraper(page, keyword)
+        # [...] otros scrapers
+        await browser.close()
+```
+- Inicia una instancia de navegador usando `async_playwright` en modo asincrónico.
+- Crea una nueva pestaña y ejecuta el scraper específico para El Tiempo con la palabra clave.
+- Al finalizar, cierra el navegador limpiamente. Puede ampliarse para incluir otros sitios.
+
+### 4. Ejemplo de uso
+```python
+  async def run():
+    scraper = NewScraper()
+    await scraper.scraper("elecciones 2023")
+    
+asyncio.run(run())
+```
+- Crea una instancia del scraper de noticias (`NewScraper`).
+- Ejecuta el método principal `scraper` con la palabra clave `"elecciones 2023"`.
+- Usa `asyncio.run()` para lanzar la rutina asincrónica desde un contexto sincrónico.
+
+## Parte 3 - WikiScraper
+### Bibliotecas utilizadas
+```python
+  from playwright.sync_api import sync_playwright
+from herramientas import process_text
+```
+### Clase WikiScraper
+### 1. Estructura Principal
+```python
+  class WikiScraper:
+    def scraper(self, urls):
+        with sync_playwright() as p:
+            browser = p.chromium.launch(headless=False)
+            page = browser.new_page()
+            page.goto(url)
+```
+- Abre una sesión de navegador en modo sincrónico usando `sync_playwright`.
+- Lanza un navegador Chromium visible (`headless=False`) y abre una nueva pestaña.
+- Navega a la URL proporcionada para comenzar el proceso de scraping.
+### 2. Proceso de Extracción
+#### Detección de secciones
+```python
+  sections = page.locator("h2").all_inner_texts()
+banned = {"Contenidos", "Referencias", "Enlaces externos"}
+filtered = [s for s in sections if s not in banned]
+```
+- Extrae todos los títulos de segundo nivel (`<h2>`) de la página.
+- Define un conjunto de secciones que deben excluirse (`banned`).
+- Filtra las secciones eliminando aquellas que estén en la lista prohibida.
+#### Extracción de contenido
+```python
+  if selected_section == "Introducción":
+    paragraphs = page.locator("p")
+    for p in paragraphs.all():
+        if p.locator("xpath=preceding-sibling::h2").count() > 0:
+            break
+        full_text += p.inner_text() + "\n\n"
+```
+- Si la sección seleccionada es "Introducción", se recorren los párrafos (`<p>`) iniciales de la página.
+- Se detiene la lectura cuando aparece el primer `<h2>`, indicando el fin de la introducción.
+- Se acumula el texto de cada párrafo relevante en la variable `full_text`, separado por saltos de línea.
+### 3. Ejemplo de Output
+```python
+  process_text(
+    url="https://es.wikipedia.org/wiki/Python",
+    seccion="Historia", 
+    texto="Guido van Rossum creó Python...",
+    modo="resumen_IA"
+)
+```
+``` mermaid
+flowchart TD
+    Retail[RetailScraper] -->|Sincrónico| CSV[(CSV/JSON)]
+    News[NewScraper] -->|Asíncrono| IA[(Resúmenes IA)]
+    Wiki[WikiScraper] -->|Estructurado| Secciones[(Secciones Wiki)]
+```
