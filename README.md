@@ -282,4 +282,4 @@ if pagina_actual < paginas and not self._ir_a_siguiente_pagina(page):
         if sitio in self.scrapers:
             return self.scrapers[sitio].scrape(producto, paginas) # Delega el trabajo al scraper específico
 ```
-#Asi finalmente culmina la magia del scraper
+# Asi finalmente culmina la magia del scraper
