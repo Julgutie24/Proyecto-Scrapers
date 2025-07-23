@@ -140,3 +140,146 @@ def scrape(self, producto: str, paginas: int = 1):
 #### ¿por qué?
 * Estructura HTML única
 * Flujos de navegación diferentes
+### 3. Navegación y Browser
+#### Configuración del Navegador
+```python
+def _setup_browser(self):
+    browser = sync_playwright().start().chromium.launch(
+        headless=False,
+        args=['--disable-blink-features=AutomationControlled']
+    )
+```
+##### Caracteristicas Clave
+* Pantalla visible
+* Evitar ser detectados
+* Configuraacion regional
+#### Busqueda de productos
+```python
+def _realizar_busqueda(self, page, producto):
+    search_input = page.wait_for_selector(self.search_input_selector)
+    search_input.fill(producto)
+```
+* Espera campo de busqueda
+* Busca el producto
+### 4. Manejo de Datos
+#### Extracción Estructurada
+```python
+def _extraer_datos_producto(self, item):
+    return {
+        "producto": nombre,
+        "precio_actual": f"${precio} COP",
+        "descuento": descuento,
+        # ... (otros campos)
+    }
+```
+* Cálculo de descuentos si no estan visible
+* url al producto
+#### Exportación de Resultados
+```python
+def _guardar_resultados(self, productos: list, producto: str):
+    # CSV
+    with open(f"{nombre_archivo}.csv", "w") as file:
+        writer = csv.DictWriter(...)
+    # JSON
+    with open(f"{nombre_archivo}.json", "w") as file:
+        json.dump(...)
+```
+* CSV: Para análisis en Excel/Google Sheets
+* JSON: Para integraciones con otras aplicaciones
+### 5. Utilidades Avanzadas
+#### Manejo de errores
+```python
+def _ir_a_siguiente_pagina(self, page):
+    try:
+        next_btn = page.locator(self.next_page_selector)
+        next_btn.click(force=True)
+    except Exception as e:
+        print(f"Error: {str(e)}")
+        return False
+```
+* Verifica existencia de botón
+* Fuerza clics si es necesario
+* Registra errores sin detener la ejecución
+#### Anti-Detección
+```python
+def _esperar_carga(self, min=2, max=4):
+    delay = random.uniform(min, max)
+    time.sleep(delay)
+```
+* Esperas aleatorias entre acciones
+* Simula velocidad humana de navegación
+## ¿Comó funciona?
+```mermaid
+flowchart TD
+    A[Inicio] --> B[setup_browser]
+    B --> C[realizar_busqueda]
+    C --> D[extraer_datos_producto]
+    D --> E{¿Más páginas?}
+    E -->|Sí| F[ir_a_siguiente_pagina]
+    E -->|No| G[guardar_resultados]
+```
+##Ejemplo de scraper - Mercado Libre
+```python
+class MercadoLibreScraper(BaseRetailScraper):
+    """Scraper especializado para Mercado Libre Colombia"""
+    
+    def __init__(self):
+        super().__init__("MercadoLibre", "https://www.mercadolibre.com.co")
+        
+        # Definición de selectores específicos
+        self.search_input_selector = "input.nav-search-input"
+        self.search_button_selector = None  # Se usa Enter
+        self.product_container_selector = "div.ui-search-result"
+        self.product_name_selector = "h2.ui-search-item__title"
+        self.product_price_selector = "span.andes-money-amount__fraction"
+        self.product_original_price_selector = "s.andes-money-amount__fraction"
+        self.product_link_selector = "a.ui-search-link"
+        self.product_discount_selector = "span.ui-search-price__discount"
+        self.next_page_selector = "li.andes-pagination__button--next a"
+        self.cookie_accept_selector = "button.cookie-consent-banner-opt-out__action"
+```
+* Selectores actualizados
+* Busqueda por enter
+### Metodo scrape(donde esta la magia)
+#### 1. Inicialización del Browser
+```python
+browser, page = self._setup_browser()
+```
+* Lanza un navegador Chromium
+* Crea una nueva pestaña (page) lista para navegar.
+#### 2. Navegación Inicial
+```python
+page.goto(self.base_url, timeout=60000)
+self._manejar_cookies(page)
+```
+* Carga la página principal de Mercado Libre.
+* Intenta cerrar el popup de cookies (si existe).
+#### 3. Búsqueda Mágica
+```python
+self._realizar_busqueda(page, "iPhone 15")
+```
+* Localiza el input de búsqueda usando self.search_input_selector.
+* Simula escritura humana con .fill() + _esperar_carga().
+#### 4. Extracción de Productos
+```python
+items = page.query_selector_all(self.product_container_selector)
+for item in items:
+    producto_data = self._extraer_datos_producto(item)
+```
+* query_selector_all(): Captura todos los contenedores de productos (ej: "<div class="ui-search-result"">).
+* _extraer_datos_producto() por cada ítem:
+#### Paginación Automática
+```python
+if pagina_actual < paginas and not self._ir_a_siguiente_pagina(page):
+    break
+```
+* Usa self.next_page_selector (li.andes-pagination__button--next a).
+* Hover + Click forzado: Simula comportamiento humano real.
+## RetailScraper(orquestador)
+```python
+  def scrape(self, producto: str, sitio: str, paginas: int = 1):
+        sitio = sitio.lower()  # Obtiene MercadoLibreScraper o ExitoScraper
+        if sitio in self.scrapers:
+            return self.scrapers[sitio].scrape(producto, paginas) # Delega el trabajo al scraper específico
+```
+#Asi finalmente culmina la magia del scraper
