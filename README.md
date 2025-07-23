@@ -283,7 +283,7 @@ if pagina_actual < paginas and not self._ir_a_siguiente_pagina(page):
         if sitio in self.scrapers:
             return self.scrapers[sitio].scrape(producto, paginas) # Delega el trabajo al scraper específico
 ```
-## Parte 2 - Scraper de Noticias (NewScraper)
+# Parte 2 - Scraper de Noticias (NewScraper)
 
 ### Bibliotecas utilizadas
 
